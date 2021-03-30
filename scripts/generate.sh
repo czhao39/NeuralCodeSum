@@ -21,7 +21,7 @@ echo "============Generating (Beam)============"
 RGPU=$1
 MODEL_NAME=$2
 
-PYTHONPATH=$SRC_DIR CUDA_VISIBLE_DEVICES=$RGPU python -W ignore ${SRC_DIR}/main/test.py \
+PYTHONPATH=$SRC_DIR CUDA_VISIBLE_DEVICES=$RGPU python3 -W ignore ${SRC_DIR}/main/test.py \
 --only_generate True \
 --data_workers 5 \
 --dataset_name $DATASET \

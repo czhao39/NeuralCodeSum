@@ -14,4 +14,4 @@ else
 fi
 
 echo "Aggregating statistics of the dataset"
-python get_stat.py
+python3 get_stat.py

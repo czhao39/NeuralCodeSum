@@ -24,7 +24,7 @@ echo "============TRAINING============"
 RGPU=$1
 MODEL_NAME=$2
 
-PYTHONPATH=$SRC_DIR CUDA_VISIBLE_DEVICES=$RGPU python -W ignore ${SRC_DIR}/main/train.py \
+PYTHONPATH=$SRC_DIR CUDA_VISIBLE_DEVICES=$RGPU python3 -W ignore ${SRC_DIR}/main/train.py \
 --data_workers 5 \
 --dataset_name $DATASET \
 --data_dir ${DATA_DIR}/ \
@@ -81,7 +81,7 @@ echo "============TESTING============"
 RGPU=$1
 MODEL_NAME=$2
 
-PYTHONPATH=$SRC_DIR CUDA_VISIBLE_DEVICES=$RGPU python -W ignore ${SRC_DIR}/main/train.py \
+PYTHONPATH=$SRC_DIR CUDA_VISIBLE_DEVICES=$RGPU python3 -W ignore ${SRC_DIR}/main/train.py \
 --only_test True \
 --data_workers 5 \
 --dataset_name $DATASET \
@@ -105,7 +105,7 @@ echo "============Beam Search TESTING============"
 RGPU=$1
 MODEL_NAME=$2
 
-PYTHONPATH=$SRC_DIR CUDA_VISIBLE_DEVICES=$RGPU python -W ignore ${SRC_DIR}/main/test.py \
+PYTHONPATH=$SRC_DIR CUDA_VISIBLE_DEVICES=$RGPU python3 -W ignore ${SRC_DIR}/main/test.py \
 --data_workers 5 \
 --dataset_name $DATASET \
 --data_dir ${DATA_DIR}/ \
