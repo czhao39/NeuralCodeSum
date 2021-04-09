@@ -4,3 +4,4 @@
 c2nl/*/__pycache__/*
 tmp/
 *.egg-info/
+*.swp

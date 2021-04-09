@@ -3,6 +3,7 @@ from __future__ import division
 import torch
 import warnings
 from c2nl.translator import penalties
+import itertools
 
 
 class Beam(object):
@@ -71,7 +72,14 @@ class Beam(object):
         "Get the backpointers for the current timestep."
         return self.prev_ks[-1]
 
-    def advance(self, word_probs, attn_out):
+    def advance(
+      self,
+      word_probs,
+      attn_out,
+      prev_seqs=None,
+      dissim=None,
+      diversity_weight=0.1,
+    ):
         """
         Given prob over words for every last beam `wordLk` and attention
         `attn_out`: Compute and update the beam search.
@@ -80,9 +88,9 @@ class Beam(object):
         * `attn_out`- attention at the last step
         Returns: True if beam search is complete.
         """
+        assert(diversity_weight > 0)
         num_words = word_probs.size(1)
-        if self.stepwise_penalty:
-            self.global_scorer.update_score(self, attn_out)
+        if self.stepwise_penalty: self.global_scorer.update_score(self, attn_out)
         # force the output to be longer than self.min_length
         cur_len = len(self.next_ys)
         if cur_len < self.min_length:
@@ -90,12 +98,16 @@ class Beam(object):
                 word_probs[k][self._eos] = -1e20
         # Sum the previous scores.
         if len(self.prev_ks) > 0:
-            beam_scores = word_probs + \
-                          self.scores.unsqueeze(1).expand_as(word_probs)
+            beam_scores = word_probs + self.scores.unsqueeze(1).expand_as(word_probs)
+
+            if prev_seqs is not None:
+              ...
+              # TODO add dissimilarity costs here
+              #beam_scores = word_probs
+
             # Don't let EOS have children.
             for i in range(self.next_ys[-1].size(0)):
-                if self.next_ys[-1][i] == self._eos:
-                    beam_scores[i] = -1e20
+                if self.next_ys[-1][i] == self._eos: beam_scores[i] = -1e20
 
             # Block ngram repeats
             if self.block_ngram_repeat > 0:
@@ -175,6 +187,69 @@ class Beam(object):
             k = self.prev_ks[j][k]
         return hyp[::-1], torch.stack(attn[::-1])
 
+# Diverse beam search, which is essentially just delegating most of the work
+# to the existing Beam search module
+class DiverseBeam(object):
+    def __init__(self, size, pad, bos, eos,
+                 n_best=1, cuda=False,
+                 global_scorer=None,
+                 min_length=0,
+                 stepwise_penalty=False,
+                 block_ngram_repeat=0,
+                 # function which takes 2 sequences and returns how dissimilar they are
+                 dissimilarity = lambda seq_a,seq_b: -(seq_a == seq_b).sum()
+                 exclusion_tokens=set(),
+                 num_groups=3,
+    ):
+      assert(num_groups > 0)
+      self.beams = [Beam(
+        round(size/num_groups), pad, bos, eos, n_best, cuda, global_scorer, min_length,
+        stepwise_penalty, block_ngram_repeat, exclusion_tokens
+      ) for _ in range(num_groups)]
+      assert(dissimiliarity is not None)
+      self.dissim = dissimilarity
+
+    # Get the outputs for the current timestep.
+    def get_current_state(self):
+      print(self.beams[0].get_current_state().shape)
+      print(self.beams[1].get_current_state().shape)
+      return torch.cat([
+        beam.get_current_state() for beam in self.beams
+      ], dim=0)
+
+    # Get the backpointers for the current timestep.
+    def get_current_origin(self):
+      print(self.beams[0].get_current_state().shape)
+      print(self.beams[1].get_current_state().shape)
+      return torch.cat([
+        beam.get_current_origin() for beam in self.beams
+      ], dim=0)
+
+    def advance(self, word_probs, attn_out):
+      for i, beam in enumerate(self.beams):
+        prev_hyps = [beam.hyp() for beam in self.beams[:i]]
+        beam.advance(word_probs, attn_out, prev_hyps, self.dissim)
+
+    @property
+    def done(self): return all(beam.done for beam in self.beams)
+
+    def sort_finished(self, minimum=None):
+        scores, ks = list(zip(*[
+          beam.sort_finished(minimum) for beam in self.beams
+        ]))
+        print(scores, ks)
+        scores = list(chain(*scores))
+        ks = list(chain(*ks))
+        return scores, ks
+
+    # Walk back to construct the full hypothesis.
+    def get_hyp(self, timestep, k):
+        hyps, attns = list(zip(*[
+          beam.get_hyp(timestep, k) for beam in self.beams
+        ]))
+        print(hyps, attns)
+        raise NotImplementedError()
+        return torch.cat(hyps, dim=0), torch.cat(attns, dim=0)
 
 class GNMTGlobalScorer(object):
     """
