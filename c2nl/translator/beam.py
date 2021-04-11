@@ -100,7 +100,8 @@ class Beam(object):
         if len(self.prev_ks) > 0:
             beam_scores = word_probs + self.scores.unsqueeze(1).expand_as(word_probs)
 
-            if prev_seqs is not None:
+            if prev_seqs is not None and len(prev_seqs) > 0:
+              assert(len(prev_seqs[0][0]) == cur_len)
               ...
               # TODO add dissimilarity costs here
               #beam_scores = word_probs
