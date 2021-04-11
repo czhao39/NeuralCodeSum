@@ -4,7 +4,7 @@ from __future__ import print_function
 import torch
 import torch.nn.functional as f
 
-from c2nl.translator.beam import Beam
+from c2nl.translator.beam import Beam, DiverseBeam
 from c2nl.inputters import constants
 
 
@@ -72,7 +72,7 @@ class Translator(object):
         exclusion_tokens = set([self.model.tgt_dict[t]
                                 for t in self.ignore_when_blocking])
 
-        beam = [Beam(beam_size,
+        beam = [DiverseBeam(beam_size,
                      n_best=self.n_best,
                      cuda=self.use_gpu,
                      global_scorer=self.global_scorer,
@@ -86,8 +86,7 @@ class Translator(object):
                 for __ in range(batch_size)]
 
         # Help functions for working with beams and batches
-        def var(a):
-            return torch.tensor(a)
+        def var(a): return a.clone().detach()
 
         def rvar(a):
             return var(a.repeat(beam_size, 1, 1))

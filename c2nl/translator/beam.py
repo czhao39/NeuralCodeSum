@@ -202,8 +202,10 @@ class DiverseBeam(object):
                  num_groups=3,
     ):
       assert(num_groups > 0)
+      assert((size % num_groups) == 0)
+      self.split_size = ss = size//num_groups
       self.beams = [Beam(
-        round(size/num_groups), pad, bos, eos, n_best, cuda, global_scorer, min_length,
+        ss, pad, bos, eos, n_best, cuda, global_scorer, min_length,
         stepwise_penalty, block_ngram_repeat, exclusion_tokens
       ) for _ in range(num_groups)]
       assert(dissimilarity is not None)
@@ -211,24 +213,26 @@ class DiverseBeam(object):
 
     # Get the outputs for the current timestep.
     def get_current_state(self):
-      print(self.beams[0].get_current_state().shape)
-      print(self.beams[1].get_current_state().shape)
       return torch.cat([
         beam.get_current_state() for beam in self.beams
       ], dim=0)
 
     # Get the backpointers for the current timestep.
     def get_current_origin(self):
-      print(self.beams[0].get_current_state().shape)
-      print(self.beams[1].get_current_state().shape)
       return torch.cat([
         beam.get_current_origin() for beam in self.beams
       ], dim=0)
 
-    def advance(self, word_probs, attn_out):
+    def advance(self, word_prob, attn_out):
+      word_probs = word_prob.split(self.split_size, dim=0)
+      attn_outs = attn_out.split(self.split_size, dim=0)
+      first_beam = self.beams[0]
+      first_beam.advance(word_probs[0], attn_outs[0], [], self.dissim)
+      le = len(first_beam.next_ys)-1
       for i, beam in enumerate(self.beams):
-        prev_hyps = [beam.hyp() for beam in self.beams[:i]]
-        beam.advance(word_probs, attn_out, prev_hyps, self.dissim)
+        if i == 0: continue
+        prev_hyps = [beam.get_hyp(le, beam.get_current_origin()) for beam in self.beams[:i]]
+        beam.advance(word_probs[i], attn_outs[i], prev_hyps, self.dissim)
 
     @property
     def done(self): return all(beam.done for beam in self.beams)
@@ -237,7 +241,6 @@ class DiverseBeam(object):
         scores, ks = list(zip(*[
           beam.sort_finished(minimum) for beam in self.beams
         ]))
-        print(scores, ks)
         scores = list(itertools.chain(*scores))
         ks = list(itertools.chain(*ks))
         return scores, ks
@@ -247,9 +250,7 @@ class DiverseBeam(object):
         hyps, attns = list(zip(*[
           beam.get_hyp(timestep, k) for beam in self.beams
         ]))
-        print(hyps, attns)
-        raise NotImplementedError()
-        return torch.cat(hyps, dim=0), torch.cat(attns, dim=0)
+        return list(itertools.chain(*hyps)), torch.cat(attns, dim=0)
 
 class GNMTGlobalScorer(object):
     """
