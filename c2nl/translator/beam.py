@@ -197,7 +197,7 @@ class DiverseBeam(object):
                  stepwise_penalty=False,
                  block_ngram_repeat=0,
                  # function which takes 2 sequences and returns how dissimilar they are
-                 dissimilarity = lambda seq_a,seq_b: -(seq_a == seq_b).sum()
+                 dissimilarity = lambda seq_a,seq_b: -(seq_a == seq_b).sum(),
                  exclusion_tokens=set(),
                  num_groups=3,
     ):
@@ -206,7 +206,7 @@ class DiverseBeam(object):
         round(size/num_groups), pad, bos, eos, n_best, cuda, global_scorer, min_length,
         stepwise_penalty, block_ngram_repeat, exclusion_tokens
       ) for _ in range(num_groups)]
-      assert(dissimiliarity is not None)
+      assert(dissimilarity is not None)
       self.dissim = dissimilarity
 
     # Get the outputs for the current timestep.
@@ -238,8 +238,8 @@ class DiverseBeam(object):
           beam.sort_finished(minimum) for beam in self.beams
         ]))
         print(scores, ks)
-        scores = list(chain(*scores))
-        ks = list(chain(*ks))
+        scores = list(itertools.chain(*scores))
+        ks = list(itertools.chain(*ks))
         return scores, ks
 
     # Walk back to construct the full hypothesis.
