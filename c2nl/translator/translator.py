@@ -72,6 +72,7 @@ class Translator(object):
         exclusion_tokens = set([self.model.tgt_dict[t]
                                 for t in self.ignore_when_blocking])
 
+        # beam = [Beam(beam_size,
         beam = [DiverseBeam(beam_size,
                      n_best=self.n_best,
                      cuda=self.use_gpu,

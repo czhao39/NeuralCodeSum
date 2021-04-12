@@ -4,6 +4,7 @@ import torch
 import warnings
 from c2nl.translator import penalties
 import itertools
+from typing import List
 
 
 class Beam(object):
@@ -26,17 +27,17 @@ class Beam(object):
                  block_ngram_repeat=0,
                  exclusion_tokens=set()):
 
-        self.size = size
+        self.size = size # beam size B
         self.tt = torch.cuda if cuda else torch
 
         # The score for each translation on the beam.
         self.scores = self.tt.FloatTensor(size).zero_()
         self.all_scores = []
 
-        # The backpointers at each time-step.
+        # The backpointers at each time-step. (T x B, contains index in size)
         self.prev_ks = []
 
-        # The outputs at each time-step.
+        # The outputs at each time-step. (T x B, contains word ids)
         self.next_ys = [self.tt.LongTensor(size)
                             .fill_(pad)]
         self.next_ys[0][0] = bos
@@ -78,7 +79,7 @@ class Beam(object):
       attn_out,
       prev_seqs=None,
       dissim=None,
-      diversity_weight=0.1,
+      diversity_weight=0.0,
     ):
         """
         Given prob over words for every last beam `wordLk` and attention
@@ -86,9 +87,14 @@ class Beam(object):
         Parameters:
         * `word_probs`- probs of advancing from the last step (K x words)
         * `attn_out`- attention at the last step
+        * `prev_seqs`: List[tensor], where each tensor item is the index of a word.
+        *       Represents a previous hypotheses to compare to for DBS dissimilarity.
+        * `dissim(Beam, List[Beam], num_words)`- dissimilarity function comparing this Beam
+        *       to other Beams
+        * `diversity_weight`- weight of dissimilarity function relative to probabilities
         Returns: True if beam search is complete.
         """
-        assert(diversity_weight > 0)
+        assert(diversity_weight >= 0)
         num_words = word_probs.size(1)
         if self.stepwise_penalty: self.global_scorer.update_score(self, attn_out)
         # force the output to be longer than self.min_length
@@ -101,14 +107,10 @@ class Beam(object):
             beam_scores = word_probs + self.scores.unsqueeze(1).expand_as(word_probs)
 
             if prev_seqs is not None and len(prev_seqs) > 0:
-              assert(len(prev_seqs[0]) == cur_len)
-              # prev_seqs[0]: List[tensor], where each tensor item is the index of a word.
-              for seq in prev_seqs:
-                for j in range(self.next_ys[-1].shape[0]):
-                  hyp, _ = self.get_hyp(cur_len - 1, j)
-                  curr_seq = torch.stack(hyp + [torch.tensor(j).expand_as(hyp[0])], dim=0)
-                  beam_scores[:, j] = beam_scores[:, j] + \
-                    diversity_weight * dissim(torch.stack(seq, dim=0), curr_seq)
+                assert(len(prev_seqs[0]) == cur_len)
+                for k in range(self.size):
+                    curr_seq, _ = self.get_hyp(cur_len - 1, k)
+                    beam_scores[k, :] += diversity_weight * dissim(prev_seqs, curr_seq, num_words)
 
             # Don't let EOS have children.
             for i in range(self.next_ys[-1].size(0)):
@@ -166,6 +168,10 @@ class Beam(object):
         return self.eos_top and len(self.finished) >= self.n_best
 
     def sort_finished(self, minimum=None):
+        """
+        Return the score and ks=(timestep, k) where each finished sentence ends, sorted by
+        sentence length.
+        """
         if minimum is not None:
             i = 0
             # Add from beam until we have minimum outputs.
@@ -191,9 +197,27 @@ class Beam(object):
             k = self.prev_ks[j][k]
         return hyp[::-1], torch.stack(attn[::-1])
 
-# penalizes words in the same position between two sentences
-def hamming_dissimilarity(a: ["N", "B"], b: ["N"]):
-  return -(a == b.unsqueeze(1)).sum(dim=0)
+def hamming_dissimilarity(prev_seqs: ["B=B'xG", "t"], curr_seq: ["t-1"], num_words):
+    """
+    Returns: array of size V containing hamming dissimilarity scores for if different words
+        were selectd for curr_seq[t]
+
+    Params:
+    prev_seqs: array of size B (total beam width) x t (total timesteps so far for 
+        previous groups), holding the entire hypothesized sequence for each of the previously
+        fixed beams. (For hamming, we only need the last time step of these sequences)
+    curr_seq: array of size t-1 holding the entire hypothesized sequence for the current
+        beam, where the element at timestep t will be decided based dissimilarity to prev_seqs
+        (For hamming, this is actually not really needed)
+    num_words: vocabulary size V
+    """
+    return -torch.bincount(torch.tensor(prev_seqs)[:,-1], minlength=num_words)
+
+
+def cumulative_dissimilarity(b: Beam, prev_groups: List[Beam], num_words):
+    raise NotImplementedError()
+
+
 
 # Diverse beam search, which is essentially just delegating most of the work
 # to the existing Beam search module
@@ -239,8 +263,8 @@ class DiverseBeam(object):
       le = len(first_beam.next_ys)-1
       for i, beam in enumerate(self.beams):
         if i == 0: continue
-        prev_hyps = [b.get_hyp(le, b.get_current_origin())[0] for b in self.beams[:i]]
-        beam.advance(word_probs[i], attn_outs[i], prev_hyps, self.dissim)
+        prev_seqs = [b.get_hyp(le, k)[0] for k in range(self.split_size) for b in self.beams[:i]]
+        beam.advance(word_probs[i], attn_outs[i], prev_seqs, self.dissim)
 
     @property
     def done(self): return all(beam.done for beam in self.beams)
@@ -259,6 +283,7 @@ class DiverseBeam(object):
           beam.get_hyp(timestep, k) for beam in self.beams
         ]))
         return list(itertools.chain(*hyps)), torch.cat(attns, dim=0)
+
 
 class GNMTGlobalScorer(object):
     """
