@@ -101,10 +101,14 @@ class Beam(object):
             beam_scores = word_probs + self.scores.unsqueeze(1).expand_as(word_probs)
 
             if prev_seqs is not None and len(prev_seqs) > 0:
-              assert(len(prev_seqs[0][0]) == cur_len)
-              ...
-              # TODO add dissimilarity costs here
-              #beam_scores = word_probs
+              assert(len(prev_seqs[0]) == cur_len)
+              # prev_seqs[0]: List[tensor], where each tensor item is the index of a word.
+              for seq in prev_seqs:
+                for j in range(self.next_ys[-1].shape[0]):
+                  hyp, _ = self.get_hyp(cur_len - 1, j)
+                  curr_seq = torch.stack(hyp + [torch.tensor(j).expand_as(hyp[0])], dim=0)
+                  beam_scores[:, j] = beam_scores[:, j] + \
+                    diversity_weight * dissim(torch.stack(seq, dim=0), curr_seq)
 
             # Don't let EOS have children.
             for i in range(self.next_ys[-1].size(0)):
@@ -133,8 +137,7 @@ class Beam(object):
             beam_scores = word_probs[0]
 
         flat_beam_scores = beam_scores.view(-1)
-        best_scores, best_scores_id = flat_beam_scores.topk(self.size, 0,
-                                                            True, True)
+        best_scores, best_scores_id = flat_beam_scores.topk(self.size, 0, True, True)
 
         self.all_scores.append(self.scores)
         self.scores = best_scores
@@ -188,6 +191,10 @@ class Beam(object):
             k = self.prev_ks[j][k]
         return hyp[::-1], torch.stack(attn[::-1])
 
+# penalizes words in the same position between two sentences
+def hamming_dissimilarity(a: ["N", "B"], b: ["N"]):
+  return -(a == b.unsqueeze(1)).sum(dim=0)
+
 # Diverse beam search, which is essentially just delegating most of the work
 # to the existing Beam search module
 class DiverseBeam(object):
@@ -198,7 +205,7 @@ class DiverseBeam(object):
                  stepwise_penalty=False,
                  block_ngram_repeat=0,
                  # function which takes 2 sequences and returns how dissimilar they are
-                 dissimilarity = lambda seq_a,seq_b: -(seq_a == seq_b).sum(),
+                 dissimilarity = hamming_dissimilarity,
                  exclusion_tokens=set(),
                  num_groups=3,
     ):
@@ -232,7 +239,7 @@ class DiverseBeam(object):
       le = len(first_beam.next_ys)-1
       for i, beam in enumerate(self.beams):
         if i == 0: continue
-        prev_hyps = [beam.get_hyp(le, beam.get_current_origin()) for beam in self.beams[:i]]
+        prev_hyps = [b.get_hyp(le, b.get_current_origin())[0] for b in self.beams[:i]]
         beam.advance(word_probs[i], attn_outs[i], prev_hyps, self.dissim)
 
     @property
