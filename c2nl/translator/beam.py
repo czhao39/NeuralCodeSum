@@ -214,7 +214,7 @@ def hamming_dissimilarity(prev_seqs: ["B=B'xG", "t"], curr_seq: ["t-1"], num_wor
     return -torch.bincount(torch.tensor(prev_seqs)[:,-1], minlength=num_words)
 
 
-def cumulative_dissimilarity(b: Beam, prev_groups: List[Beam], num_words):
+def cumulative_dissimilarity(prev_seqs: ["B=B'xG", "t"], curr_seq: ["t-1"], num_words):
     raise NotImplementedError()
 
 
@@ -229,6 +229,7 @@ class DiverseBeam(object):
                  stepwise_penalty=False,
                  block_ngram_repeat=0,
                  # function which takes 2 sequences and returns how dissimilar they are
+                 diversity_weight = 0.01,
                  dissimilarity = hamming_dissimilarity,
                  exclusion_tokens=set(),
                  num_groups=3,
@@ -241,6 +242,7 @@ class DiverseBeam(object):
         stepwise_penalty, block_ngram_repeat, exclusion_tokens
       ) for _ in range(num_groups)]
       assert(dissimilarity is not None)
+      self.diversity_weight = diversity_weight
       self.dissim = dissimilarity
 
     # Get the outputs for the current timestep.
@@ -259,12 +261,14 @@ class DiverseBeam(object):
       word_probs = word_prob.split(self.split_size, dim=0)
       attn_outs = attn_out.split(self.split_size, dim=0)
       first_beam = self.beams[0]
-      first_beam.advance(word_probs[0], attn_outs[0], [], self.dissim)
+      first_beam.advance(word_probs[0], attn_outs[0],
+                prev_seqs=[], dissim=self.dissim, diversity_weight=self.diversity_weight)
       le = len(first_beam.next_ys)-1
       for i, beam in enumerate(self.beams):
         if i == 0: continue
         prev_seqs = [b.get_hyp(le, k)[0] for k in range(self.split_size) for b in self.beams[:i]]
-        beam.advance(word_probs[i], attn_outs[i], prev_seqs, self.dissim)
+        beam.advance(word_probs[i], attn_outs[i],
+                prev_seqs=prev_seqs, dissim=self.dissim, diversity_weight=self.diversity_weight)
 
     @property
     def done(self): return all(beam.done for beam in self.beams)
