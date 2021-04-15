@@ -87,11 +87,12 @@ class Beam(object):
         Parameters:
         * `word_probs`- probs of advancing from the last step (K x words)
         * `attn_out`- attention at the last step
-        * `prev_seqs`: List[tensor], where each tensor item is the index of a word.
-        *       Represents a previous hypotheses to compare to for DBS dissimilarity.
-        * `dissim(Beam, List[Beam], num_words)`- dissimilarity function comparing this Beam
+        * `prev_seqs`: List[List] of shape B'xt, and each item is the index of a word.
+        *       Represents a previous hypotheses to compare to for DBS dissimilarity. B' is
+        *       the split beam width.
+        * `dissim(Beam, List[Beam], num_words)`: Dissimilarity object to compare this Beam
         *       to other Beams
-        * `diversity_weight`- weight of dissimilarity function relative to probabilities
+        * `diversity_weight`: weight of dissimilarity function relative to probabilities
         Returns: True if beam search is complete.
         """
         assert(diversity_weight >= 0)
@@ -110,7 +111,8 @@ class Beam(object):
                 assert(len(prev_seqs[0]) == cur_len)
                 for k in range(self.size):
                     curr_seq, _ = self.get_hyp(cur_len - 1, k)
-                    beam_scores[k, :] += diversity_weight * dissim(prev_seqs, curr_seq, num_words)
+                    beam_scores[k, :] += diversity_weight * \
+                            dissim.function(prev_seqs, curr_seq, num_words)
 
             # Don't let EOS have children.
             for i in range(self.next_ys[-1].size(0)):
@@ -197,26 +199,51 @@ class Beam(object):
             k = self.prev_ks[j][k]
         return hyp[::-1], torch.stack(attn[::-1])
 
-def hamming_dissimilarity(prev_seqs: ["B=B'xG", "t"], curr_seq: ["t-1"], num_words):
+class Dissimilarity(object):
     """
+    FOR ALL DISSIMILARITY FUNCTIONS:
     Returns: array of size V containing hamming dissimilarity scores for if different words
         were selectd for curr_seq[t]
-
-    Params:
+    
+    Params to each dissimilarity function:
     prev_seqs: array of size B (total beam width) x t (total timesteps so far for 
         previous groups), holding the entire hypothesized sequence for each of the previously
-        fixed beams. (For hamming, we only need the last time step of these sequences)
+        fixed beams.
     curr_seq: array of size t-1 holding the entire hypothesized sequence for the current
         beam, where the element at timestep t will be decided based dissimilarity to prev_seqs
-        (For hamming, this is actually not really needed)
     num_words: vocabulary size V
+    Additional kwargs are passed to the dissimilarity function during the init.
     """
-    return -torch.bincount(torch.tensor(prev_seqs)[:,-1], minlength=num_words)
+    def __init__(self, name, **kwargs):
+        assert name in ['hamming', 'cumulative']
+        if name == 'cumulative': assert 'temperature' in kwargs.keys()
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+        self.function = getattr(self, name)
 
-
-def cumulative_dissimilarity(prev_seqs: ["B=B'xG", "t"], curr_seq: ["t-1"], num_words):
-    raise NotImplementedError()
-
+    def hamming(self, prev_seqs: ["B=B'xG", "t"], curr_seq: ["t-1"], num_words):
+        """
+        Penalize selection of tokens used in last time step of previous groups based on
+        number of times it was selected for.
+        For hamming, we only need the last time step of prev_seqs and curr_seq is technically
+        unneeded.
+        """
+        return -torch.bincount(torch.tensor(prev_seqs)[:,-1], minlength=num_words)
+    
+    
+    def cumulative(self, prev_seqs: ["B=B'xG", "t"], curr_seq: ["t-1"], num_words):
+        """
+        Penalize selection of tokens used at any time step of previous groups, weighted by
+        temperature parameter.
+        """
+        temperature = self.temperature
+        T = len(prev_seqs[0])
+        count = -torch.sum(
+                torch.stack([torch.bincount(
+                        torch.tensor(prev_seqs)[:,t],
+                        weights=torch.eq(torch.tensor(prev_seqs)[:,t], curr_seq[t]),
+                        minlength=num_words) for t in range(T-1)]), dim=0)
+        return torch.exp((count + self.hamming(prev_seqs, curr_seq, num_words))/temperature)
 
 
 # Diverse beam search, which is essentially just delegating most of the work
@@ -230,7 +257,8 @@ class DiverseBeam(object):
                  block_ngram_repeat=0,
                  # function which takes 2 sequences and returns how dissimilar they are
                  diversity_weight = 0.01,
-                 dissimilarity = hamming_dissimilarity,
+                 # dissimilarity = Dissimilarity('hamming'),
+                 dissimilarity = Dissimilarity('cumulative', temperature=0.1),
                  exclusion_tokens=set(),
                  num_groups=3,
     ):
@@ -261,14 +289,24 @@ class DiverseBeam(object):
       word_probs = word_prob.split(self.split_size, dim=0)
       attn_outs = attn_out.split(self.split_size, dim=0)
       first_beam = self.beams[0]
-      first_beam.advance(word_probs[0], attn_outs[0],
-                prev_seqs=[], dissim=self.dissim, diversity_weight=self.diversity_weight)
+      first_beam.advance(
+              word_probs[0],
+              attn_outs[0],
+              prev_seqs=[],
+              dissim=self.dissim,
+              diversity_weight=self.diversity_weight,
+              )
       le = len(first_beam.next_ys)-1
       for i, beam in enumerate(self.beams):
         if i == 0: continue
         prev_seqs = [b.get_hyp(le, k)[0] for k in range(self.split_size) for b in self.beams[:i]]
-        beam.advance(word_probs[i], attn_outs[i],
-                prev_seqs=prev_seqs, dissim=self.dissim, diversity_weight=self.diversity_weight)
+        beam.advance(
+                word_probs[i],
+                attn_outs[i],
+                prev_seqs=prev_seqs,
+                dissim=self.dissim,
+                diversity_weight=self.diversity_weight,
+                )
 
     @property
     def done(self): return all(beam.done for beam in self.beams)
