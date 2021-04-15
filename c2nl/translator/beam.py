@@ -243,7 +243,7 @@ class Dissimilarity(object):
                         torch.tensor(prev_seqs)[:,t],
                         weights=torch.eq(torch.tensor(prev_seqs)[:,t], curr_seq[t]),
                         minlength=num_words) for t in range(T-1)]), dim=0)
-        return torch.exp((count + self.hamming(prev_seqs, curr_seq, num_words))/temperature)
+        return (count + self.hamming(prev_seqs, curr_seq, num_words))/temperature
 
 
 # Diverse beam search, which is essentially just delegating most of the work
@@ -256,11 +256,11 @@ class DiverseBeam(object):
                  stepwise_penalty=False,
                  block_ngram_repeat=0,
                  # function which takes 2 sequences and returns how dissimilar they are
-                 diversity_weight = 0.01,
+                 diversity_weight = 0.1,
                  # dissimilarity = Dissimilarity('hamming'),
                  dissimilarity = Dissimilarity('cumulative', temperature=0.1),
                  exclusion_tokens=set(),
-                 num_groups=3,
+                 num_groups=3, # the limit where num_groups=1 should be regular beam 
     ):
       assert(num_groups > 0)
       assert((size % num_groups) == 0)
