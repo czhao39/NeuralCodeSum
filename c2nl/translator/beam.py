@@ -215,8 +215,11 @@ class Dissimilarity(object):
     Additional kwargs are passed to the dissimilarity function during the init.
     """
     def __init__(self, name, **kwargs):
-        assert name in ['hamming', 'cumulative']
+        assert name in ['hamming', 'cumulative', 'ngram']
+
         if name == 'cumulative': assert 'temperature' in kwargs.keys()
+        elif name == 'ngram': assert 'n' in kwargs.keys()
+
         for key, value in kwargs.items():
             setattr(self, key, value)
         self.function = getattr(self, name)
@@ -238,12 +241,26 @@ class Dissimilarity(object):
         """
         temperature = self.temperature
         T = len(prev_seqs[0])
-        count = -torch.sum(
+        count = torch.sum(
                 torch.stack([torch.bincount(
                         torch.tensor(prev_seqs)[:,t],
                         weights=torch.eq(torch.tensor(prev_seqs)[:,t], curr_seq[t]),
                         minlength=num_words) for t in range(T-1)]), dim=0)
-        return (count + self.hamming(prev_seqs, curr_seq, num_words))/temperature
+        return (-count + self.hamming(prev_seqs, curr_seq, num_words))/temperature
+
+    def ngram(self, prev_seqs: ["B=B'xG", "t"], curr_seq: ["t-1"], num_words):
+        """
+        Penalize selection of token that would create an n-gram that is repeated in
+        previous beams by the number of time that n-gram has appeared.
+        """
+        n = self.n
+        ngram = curr_seq[-(n-1):]
+        # Count n-grams in prev_seqs
+        ngram_counts = [0]*num_words
+        for beam in prev_seqs:
+            for t in range(len(beam)-(n-1)):
+                if beam[t:t+n-1] == ngram: ngram_counts[beam[t+n-1]] += 1
+        return -torch.tensor(ngram_counts)
 
 
 # Diverse beam search, which is essentially just delegating most of the work
@@ -258,7 +275,8 @@ class DiverseBeam(object):
                  # function which takes 2 sequences and returns how dissimilar they are
                  diversity_weight = 0.1,
                  # dissimilarity = Dissimilarity('hamming'),
-                 dissimilarity = Dissimilarity('cumulative', temperature=0.1),
+                 # dissimilarity = Dissimilarity('cumulative', temperature=0.1),
+                 dissimilarity = Dissimilarity('ngram', n=2),
                  exclusion_tokens=set(),
                  num_groups=3, # the limit where num_groups=1 should be regular beam 
     ):
