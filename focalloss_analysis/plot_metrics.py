@@ -34,51 +34,22 @@ for m in normal_metrics["train"].keys():
 for m in normal_metrics["valid"].keys():
     normal_metrics["valid"][m] = normal_metrics["valid"][m][120:]
 
+fig, axs = plt.subplots(2, 2, figsize=(10, 6))
+
 # Plot training metrics
-fig, ax = plt.subplots(figsize=(6, 4))
+ax = axs[0, 0]
 ax.plot(epochs, normal_metrics["train"]["perplexity"], label="perplexity w/ CE")
 ax.set_ylabel("perplexity")
 if sep is not None:
     new_epochs = list(range(sep, num_epochs))
     ax.plot(new_epochs, new_focal_metrics["train"]["perplexity"], linestyle="--", label="perplexity w/ focal")
-    plt.axvline(sep, color="black", linestyle=":")
-plt.xlabel("Epoch")
-plt.title("Training Perplexity")
-plt.legend()
-plt.tight_layout()
-plt.savefig("train_ppl.png", dpi=200, bbox_inches="tight")
-plt.show()
-
-# Plot validation BLEU
-fig, ax = plt.subplots(figsize=(6, 4))
-ax.plot(epochs, normal_metrics["valid"]["bleu"], label="BLEU w/ CE")
-if sep is not None:
-    ax.plot(new_epochs, new_focal_metrics["valid"]["bleu"], linestyle="--", label="BLEU w/ focal")
-    plt.axvline(sep, color="black", linestyle=":")
-plt.xlabel("Epoch")
-plt.ylabel("BLEU")
-plt.title("Validation BLEU Score")
-plt.legend()
-plt.tight_layout()
-plt.savefig("valid_bleu.png", dpi=200, bbox_inches="tight")
-plt.show()
-
-# Plot validation ROUGE-L
-fig, ax = plt.subplots(figsize=(6, 4))
-ax.plot(epochs, normal_metrics["valid"]["rouge_l"], label="ROUGE-L w/ CE")
-if sep is not None:
-    ax.plot(new_epochs, new_focal_metrics["valid"]["rouge_l"], linestyle="--", label="ROUGE-L w/ focal")
-    plt.axvline(sep, color="black", linestyle=":")
-plt.xlabel("Epoch")
-plt.ylabel("ROUGE-L")
-plt.title("Validation ROUGE-L Score")
-plt.legend()
-plt.tight_layout()
-plt.savefig("valid_rouge_l.png", dpi=200, bbox_inches="tight")
-plt.show()
+    ax.axvline(sep, color="black", linestyle=":")
+ax.set_xlabel("Epoch")
+ax.set_title("Training Perplexity")
+ax.legend()
 
 # Plot validation precision, recall, F1
-fig, ax = plt.subplots(figsize=(6, 4))
+ax = axs[0, 1]
 ax.plot(epochs, normal_metrics["valid"]["precision"], label="precision w/ CE")
 ax.plot(epochs, normal_metrics["valid"]["recall"], label="recall w/ CE")
 ax.plot(epochs, normal_metrics["valid"]["f1"], label="F1 w/ CE")
@@ -86,10 +57,33 @@ if sep is not None:
     ax.plot(new_epochs, new_focal_metrics["valid"]["precision"], linestyle="--", label="precision w/ focal")
     ax.plot(new_epochs, new_focal_metrics["valid"]["recall"], linestyle="--", label="recall w/ focal")
     ax.plot(new_epochs, new_focal_metrics["valid"]["f1"], linestyle="--", label="F1 w/ focal")
-    plt.axvline(sep, color="black", linestyle=":")
-plt.xlabel("Epoch")
-plt.title("Validation Precision, Recall, and F1")
-plt.legend()
+    ax.axvline(sep, color="black", linestyle=":")
+ax.set_xlabel("Epoch")
+ax.set_title("Validation Precision, Recall, and F1")
+ax.legend()
+
+# Plot validation BLEU
+ax = axs[1, 0]
+ax.plot(epochs, normal_metrics["valid"]["bleu"], label="BLEU w/ CE")
+if sep is not None:
+    ax.plot(new_epochs, new_focal_metrics["valid"]["bleu"], linestyle="--", label="BLEU w/ focal")
+    ax.axvline(sep, color="black", linestyle=":")
+ax.set_xlabel("Epoch")
+ax.set_ylabel("BLEU")
+ax.set_title("Validation BLEU Score")
+ax.legend()
+
+# Plot validation ROUGE-L
+ax = axs[1, 1]
+ax.plot(epochs, normal_metrics["valid"]["rouge_l"], label="ROUGE-L w/ CE")
+if sep is not None:
+    ax.plot(new_epochs, new_focal_metrics["valid"]["rouge_l"], linestyle="--", label="ROUGE-L w/ focal")
+    ax.axvline(sep, color="black", linestyle=":")
+ax.set_xlabel("Epoch")
+ax.set_ylabel("ROUGE-L")
+ax.set_title("Validation ROUGE-L Score")
+ax.legend()
+
 plt.tight_layout()
-plt.savefig("valid_prec_rec_f1.png", dpi=200, bbox_inches="tight")
+plt.savefig("metrics.png", dpi=400, bbox_inches="tight")
 plt.show()
