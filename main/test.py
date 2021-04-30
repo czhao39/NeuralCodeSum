@@ -125,6 +125,10 @@ def add_test_args(parser):
                            will copy the source token""")
     bsearch.add_argument('--verbose', action="store_true",
                          help='Print scores and predictions for each sentence')
+    bsearch.add_argument('--diversity_weight', type=float, default=0.1,
+                         help='Weight of diverse beam search')
+    bsearch.add_argument('--beam_groups', type=int, default=5,
+                         help='Weight of diverse beam search')
 
 
 def set_defaults(args):
@@ -203,7 +207,10 @@ def build_translator(model, args):
                             stepwise_penalty=args.stepwise_penalty,
                             block_ngram_repeat=args.block_ngram_repeat,
                             ignore_when_blocking=args.ignore_when_blocking,
-                            replace_unk=args.replace_unk)
+                            replace_unk=args.replace_unk,
+                            diversity_weight=args.diversity_weight,
+                            groups=args.beam_groups,
+    )
     return translator
 
 

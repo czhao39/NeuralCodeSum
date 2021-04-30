@@ -204,9 +204,9 @@ class Dissimilarity(object):
     FOR ALL DISSIMILARITY FUNCTIONS:
     Returns: array of size V containing hamming dissimilarity scores for if different words
         were selectd for curr_seq[t]
-    
+
     Params to each dissimilarity function:
-    prev_seqs: array of size B (total beam width) x t (total timesteps so far for 
+    prev_seqs: array of size B (total beam width) x t (total timesteps so far for
         previous groups), holding the entire hypothesized sequence for each of the previously
         fixed beams.
     curr_seq: array of size t-1 holding the entire hypothesized sequence for the current
@@ -232,8 +232,7 @@ class Dissimilarity(object):
         unneeded.
         """
         return -torch.bincount(torch.tensor(prev_seqs)[:,-1], minlength=num_words)
-    
-    
+
     def cumulative(self, prev_seqs: ["B=B'xG", "t"], curr_seq: ["t-1"], num_words):
         """
         Penalize selection of tokens used at any time step of previous groups, weighted by
@@ -274,11 +273,11 @@ class DiverseBeam(object):
                  block_ngram_repeat=0,
                  # function which takes 2 sequences and returns how dissimilar they are
                  diversity_weight = 0.1,
-                 # dissimilarity = Dissimilarity('hamming'),
-                 # dissimilarity = Dissimilarity('cumulative', temperature=0.1),
-                 dissimilarity = Dissimilarity('ngram', n=2),
+                 dissimilarity = Dissimilarity('hamming'),
+                 #dissimilarity = Dissimilarity('cumulative', temperature=0.1),
+                 #dissimilarity = Dissimilarity('ngram', n=2),
                  exclusion_tokens=set(),
-                 num_groups=3, # the limit where num_groups=1 should be regular beam 
+                 num_groups=5, # the limit where num_groups=1 should be regular beam
     ):
       assert(num_groups > 0)
       assert((size % num_groups) == 0)

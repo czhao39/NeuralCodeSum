@@ -35,6 +35,8 @@ class Translator(object):
                  stepwise_penalty=False,
                  block_ngram_repeat=0,
                  ignore_when_blocking=[],
+                 diversity_weight=0.1,
+                 groups=5,
                  replace_unk=False):
 
         self.use_gpu = use_gpu
@@ -49,6 +51,8 @@ class Translator(object):
         self.block_ngram_repeat = block_ngram_repeat
         self.ignore_when_blocking = set(ignore_when_blocking)
         self.replace_unk = replace_unk
+        self.diversity_weight = diversity_weight
+        self.groups = groups
 
     def translate_batch(self, batch_inputs):
         # Eval mode
@@ -72,7 +76,6 @@ class Translator(object):
         exclusion_tokens = set([self.model.tgt_dict[t]
                                 for t in self.ignore_when_blocking])
 
-        # beam = [Beam(beam_size,
         beam = [DiverseBeam(beam_size,
                      n_best=self.n_best,
                      cuda=self.use_gpu,
@@ -84,6 +87,8 @@ class Translator(object):
                      stepwise_penalty=self.stepwise_penalty,
                      block_ngram_repeat=self.block_ngram_repeat,
                      exclusion_tokens=exclusion_tokens,
+                     diversity_weight=self.diversity_weight,
+                     num_groups=self.groups,
                      )
                 for __ in range(batch_size)]
 
