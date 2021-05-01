@@ -6,3 +6,5 @@ tmp/
 *.egg-info/
 *.swp
 .DS_Store
+outputs
+*.out

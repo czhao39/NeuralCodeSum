@@ -118,15 +118,22 @@ def corpus_bleu(hypotheses, references):
     ind_score = dict()
 
     for id in Ids:
-        hyp = hypotheses[id][0].split()
+        curr_max = -1
+        best_hyp = None
         ref = [r.split() for r in references[id]]
-        hyps.append(hyp)
         refs.append(ref)
+        for hyp in hypotheses[id]:
+            hyp = hyp.split()
+            score = compute_bleu([ref], [hyp], smooth=True)[0]
+            if score > curr_max:
+              curr_max = score
+              best_hyp = hyp
 
-        score = compute_bleu([ref], [hyp], smooth=True)[0]
-        total_score += score
+        total_score += curr_max
         count += 1
-        ind_score[id] = score
+        ind_score[id] = curr_max
+
+        hyps.append(best_hyp)
 
     avg_score = total_score / count
     corpus_bleu = compute_bleu(refs, hyps, smooth=True)[0]
