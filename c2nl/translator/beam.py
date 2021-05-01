@@ -6,7 +6,6 @@ from c2nl.translator import penalties
 import itertools
 from typing import List
 
-
 class Beam(object):
     """
     Class for managing the internals of the beam search process.
@@ -216,6 +215,7 @@ class Dissimilarity(object):
     """
     def __init__(self, name, **kwargs):
         assert name in ['hamming', 'cumulative', 'ngram']
+        self.name = name
 
         if name == 'cumulative': assert 'temperature' in kwargs.keys()
         elif name == 'ngram': assert 'n' in kwargs.keys()
@@ -231,6 +231,7 @@ class Dissimilarity(object):
         For hamming, we only need the last time step of prev_seqs and curr_seq is technically
         unneeded.
         """
+        # print('where', torch.nonzero(-torch.bincount(torch.tensor(prev_seqs)[:,-1], minlength=num_words)))
         return -torch.bincount(torch.tensor(prev_seqs)[:,-1], minlength=num_words)
 
     def cumulative(self, prev_seqs: ["B=B'xG", "t"], curr_seq: ["t-1"], num_words):
@@ -272,12 +273,12 @@ class DiverseBeam(object):
                  stepwise_penalty=False,
                  block_ngram_repeat=0,
                  # function which takes 2 sequences and returns how dissimilar they are
-                 diversity_weight = 0.1,
+                 diversity_weight = 0.0,
                  dissimilarity = Dissimilarity('hamming'),
                  #dissimilarity = Dissimilarity('cumulative', temperature=0.1),
                  #dissimilarity = Dissimilarity('ngram', n=2),
                  exclusion_tokens=set(),
-                 num_groups=5, # the limit where num_groups=1 should be regular beam
+                 num_groups=1, # the limit where num_groups=1 should be regular beam
     ):
       assert(num_groups > 0)
       assert((size % num_groups) == 0)
@@ -317,6 +318,11 @@ class DiverseBeam(object):
       for i, beam in enumerate(self.beams):
         if i == 0: continue
         prev_seqs = [b.get_hyp(le, k)[0] for k in range(self.split_size) for b in self.beams[:i]]
+        # print('PREV SEQ', torch.tensor(prev_seqs).size())
+        # for i_g, g in enumerate(self.beams[:i]):
+        #     for k in range(self.split_size):
+        #         print('\t', 'group', i_g, 'sub-beam', k, g.get_hyp(le, k)[0])
+        
         beam.advance(
                 word_probs[i],
                 attn_outs[i],
@@ -329,19 +335,24 @@ class DiverseBeam(object):
     def done(self): return all(beam.done for beam in self.beams)
 
     def sort_finished(self, minimum=None):
-        scores, ks = list(zip(*[
-          beam.sort_finished(minimum) for beam in self.beams
-        ]))
-        scores = list(itertools.chain(*scores))
-        ks = list(itertools.chain(*ks))
-        return scores, ks
+        all_scores = []
+        all_ks = []
+        for b, beam in enumerate(self.beams):
+            scores, ks = beam.sort_finished(minimum)
+            all_scores.append(scores)
+            all_ks.append([(t, k  + b * self.split_size) for t, k in ks])
+        all_scores = list(itertools.chain(*all_scores))
+        all_ks = list(itertools.chain(*all_ks))
+        resorted = sorted(zip(all_scores, all_ks), key=lambda x: -x[0])
+        all_scores, all_ks = [[score for score, k in resorted], [k for score, k in resorted]]
+        return all_scores, all_ks
 
     # Walk back to construct the full hypothesis.
     def get_hyp(self, timestep, k):
-        hyps, attns = list(zip(*[
-          beam.get_hyp(timestep, k) for beam in self.beams
-        ]))
-        return list(itertools.chain(*hyps)), torch.cat(attns, dim=0)
+        b = k // self.split_size
+        kk = k % self.split_size
+        hyp, attn = self.beams[b].get_hyp(timestep, kk)
+        return hyp, attn
 
 
 class GNMTGlobalScorer(object):
