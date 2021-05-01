@@ -36,6 +36,7 @@ class Translator(object):
                  block_ngram_repeat=0,
                  ignore_when_blocking=[],
                  diversity_weight=0.1,
+                 dissimilarity='hamming',
                  groups=5,
                  replace_unk=False):
 
@@ -52,6 +53,7 @@ class Translator(object):
         self.ignore_when_blocking = set(ignore_when_blocking)
         self.replace_unk = replace_unk
         self.diversity_weight = diversity_weight
+        self.dissimilarity = dissimilarity 
         self.groups = groups
 
     def translate_batch(self, batch_inputs):
@@ -88,6 +90,7 @@ class Translator(object):
                      block_ngram_repeat=self.block_ngram_repeat,
                      exclusion_tokens=exclusion_tokens,
                      diversity_weight=self.diversity_weight,
+                     dissimilarity=self.dissimilarity,
                      num_groups=self.groups,
                      )
                 for __ in range(batch_size)]

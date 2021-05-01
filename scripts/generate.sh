@@ -34,7 +34,10 @@ PYTHONPATH=$SRC_DIR CUDA_VISIBLE_DEVICES=$RGPU python3 -W ignore ${SRC_DIR}/main
 --max_src_len 150 \
 --max_tgt_len 50 \
 --test_batch_size 64 \
---beam_size 6 \
+--beam_size 4 \
+--beam_groups 2 \
+--diversity_weight 0.5 \
+--dissimilarity hamming \
 --n_best 3 \
 --block_ngram_repeat 0 \
 --stepwise_penalty False \

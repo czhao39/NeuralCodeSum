@@ -129,6 +129,8 @@ def add_test_args(parser):
                          help='Weight of diverse beam search')
     bsearch.add_argument('--beam_groups', type=int, default=5,
                          help='Weight of diverse beam search')
+    bsearch.add_argument('--dissimilarity', type=str, default='hamming',
+                         help='Diversity function', choices=['hamming', 'cumulative', 'ngram'])
 
 
 def set_defaults(args):
@@ -210,6 +212,7 @@ def build_translator(model, args):
                             replace_unk=args.replace_unk,
                             diversity_weight=args.diversity_weight,
                             groups=args.beam_groups,
+                            dissimilarity=args.dissimilarity,
     )
     return translator
 

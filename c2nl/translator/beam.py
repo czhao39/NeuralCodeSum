@@ -217,8 +217,10 @@ class Dissimilarity(object):
         assert name in ['hamming', 'cumulative', 'ngram']
         self.name = name
 
-        if name == 'cumulative': assert 'temperature' in kwargs.keys()
-        elif name == 'ngram': assert 'n' in kwargs.keys()
+        if name == 'cumulative':
+            if 'temperature' not in kwargs.keys(): kwargs['temperature'] = 0.1
+        elif name == 'ngram':
+            if 'n' not in kwargs.keys(): kwargs['n'] = 2
 
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -231,7 +233,6 @@ class Dissimilarity(object):
         For hamming, we only need the last time step of prev_seqs and curr_seq is technically
         unneeded.
         """
-        # print('where', torch.nonzero(-torch.bincount(torch.tensor(prev_seqs)[:,-1], minlength=num_words)))
         return -torch.bincount(torch.tensor(prev_seqs)[:,-1], minlength=num_words)
 
     def cumulative(self, prev_seqs: ["B=B'xG", "t"], curr_seq: ["t-1"], num_words):
@@ -272,13 +273,11 @@ class DiverseBeam(object):
                  min_length=0,
                  stepwise_penalty=False,
                  block_ngram_repeat=0,
-                 # function which takes 2 sequences and returns how dissimilar they are
-                 diversity_weight = 0.0,
-                 dissimilarity = Dissimilarity('hamming'),
-                 #dissimilarity = Dissimilarity('cumulative', temperature=0.1),
-                 #dissimilarity = Dissimilarity('ngram', n=2),
                  exclusion_tokens=set(),
                  num_groups=1, # the limit where num_groups=1 should be regular beam
+                 diversity_weight = 0.0,
+                 dissimilarity = 'hamming',
+                 **kwargs, # extra args to dissimilarity
     ):
       assert(num_groups > 0)
       assert((size % num_groups) == 0)
@@ -289,7 +288,7 @@ class DiverseBeam(object):
       ) for _ in range(num_groups)]
       assert(dissimilarity is not None)
       self.diversity_weight = diversity_weight
-      self.dissim = dissimilarity
+      self.dissim = Dissimilarity(dissimilarity, **kwargs)
 
     # Get the outputs for the current timestep.
     def get_current_state(self):
@@ -318,11 +317,6 @@ class DiverseBeam(object):
       for i, beam in enumerate(self.beams):
         if i == 0: continue
         prev_seqs = [b.get_hyp(le, k)[0] for k in range(self.split_size) for b in self.beams[:i]]
-        # print('PREV SEQ', torch.tensor(prev_seqs).size())
-        # for i_g, g in enumerate(self.beams[:i]):
-        #     for k in range(self.split_size):
-        #         print('\t', 'group', i_g, 'sub-beam', k, g.get_hyp(le, k)[0])
-        
         beam.advance(
                 word_probs[i],
                 attn_outs[i],
@@ -340,7 +334,7 @@ class DiverseBeam(object):
         for b, beam in enumerate(self.beams):
             scores, ks = beam.sort_finished(minimum)
             all_scores.append(scores)
-            all_ks.append([(t, k  + b * self.split_size) for t, k in ks])
+            all_ks.append([(t, k + b * self.split_size) for t, k in ks])
         all_scores = list(itertools.chain(*all_scores))
         all_ks = list(itertools.chain(*all_ks))
         resorted = sorted(zip(all_scores, all_ks), key=lambda x: -x[0])
